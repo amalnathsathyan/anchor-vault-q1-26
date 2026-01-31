@@ -1,0 +1,22 @@
+################################################################
+# Manage anchor-vault deployment through Crypto Infrastructure as Code
+################################################################
+
+addon "svm" {
+    rpc_api_url = input.rpc_api_url
+    network_id = input.network_id
+}
+
+signer "user" "svm::secret_key" {
+  keypair_json = "/Users/amalnathsathyan/.config/solana/id.json"
+}
+
+action "deploy_anchor_vault" "svm::deploy_program" {
+    description = "Deploy anchor_vault program"
+    program = svm::get_program_from_anchor_project("anchor_vault") 
+    
+    // CORRECT: Reference the signer resource directly
+    authority = signer.user
+    payer     = signer.user  
+}
+
