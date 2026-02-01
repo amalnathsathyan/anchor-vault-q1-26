@@ -1,6 +1,6 @@
 use anchor_lang::{prelude::*, system_program::{Transfer,transfer}};
 
-declare_id!("GmPQtALTvRqx5YE1VW4BN2od73xBpSfqbNapnbRPBkYZ");
+declare_id!("7V1X6Eg5PGSKrE1bqCP7oTrHD9sAb6V9iNxhhncj1wJS");
 
 #[program]
 pub mod anchor_vault {
@@ -81,6 +81,7 @@ impl <'info> Initialize<'info> {
     pub fn initialize(&mut self, bump:&InitializeBumps) -> Result<()> {
 
         let rent_exempt = Rent::get()?.minimum_balance(self.vault_state.to_account_info().data_len());
+        msg!("{}",self.vault_state.to_account_info().data_len());
         
         let cpi_program = self.system_program.to_account_info();
         let cpi_accounts = Transfer {
