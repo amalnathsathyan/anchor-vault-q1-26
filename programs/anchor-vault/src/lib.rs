@@ -1,6 +1,8 @@
 use anchor_lang::{prelude::*, system_program::{Transfer,transfer}};
 
 declare_id!("7V1X6Eg5PGSKrE1bqCP7oTrHD9sAb6V9iNxhhncj1wJS");
+mod error;
+use crate::error::VaultError;
 
 #[program]
 pub mod anchor_vault {
@@ -12,6 +14,96 @@ pub mod anchor_vault {
 
     pub fn deposit(ctx: Context<Deposit>, amount:u64) -> Result<()> {
        ctx.accounts.deposit(amount)
+    }
+
+    pub fn withdraw(ctx: Context<Withdraw>, amount:u64) -> Result<()> {
+        ctx.accounts.withdraw(amount)
+    }
+
+    pub fn close(ctx:Context<Close>) -> Result<()> {
+        ctx.accounts.close()
+    }
+}
+
+#[derive(Accounts)]
+pub struct Close<'info> {
+
+    #[account(mut)]
+    pub user: Signer<'info>,
+
+    #[account(
+        mut,
+        close = user,
+        seeds = [b"vault_state",user.key().as_ref()],
+        bump = vault_state.state_bump
+    )]
+    pub vault_state: Account<'info, VaultState>,
+
+    #[account(
+        mut,
+        seeds = [b"vault",vault_state.key().as_ref()],
+        bump = vault_state.vault_bump
+    )]
+    pub vault: SystemAccount<'info>,
+
+    pub system_program : Program<'info, System>,
+}
+
+impl<'info> Close<'info> {
+    pub fn close(&mut self) -> Result<()> {
+        let cpi_program = self.system_program.to_account_info();
+        let vault_balance = self.vault.lamports();
+        let cpi_account = Transfer{
+            from: self.vault.to_account_info(),
+            to:self.user.to_account_info()
+        };
+        
+        let signer_seeds: &[&[&[u8]]] = &[&["vault".as_bytes(),self.vault_state.to_account_info().key.as_ref(),&[self.vault_state.vault_bump]]];
+        let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_account, signer_seeds);
+        
+        transfer(cpi_ctx, vault_balance)?;
+        Ok(())
+    }
+}
+
+#[derive(Accounts)]
+pub struct Withdraw<'info> {
+
+    #[account(mut)]
+    pub user: Signer<'info>,
+
+    #[account(
+        seeds = [b"vault_state",user.key().as_ref()],
+        bump = vault_state.state_bump
+    )]
+    pub vault_state: Account<'info, VaultState>,
+
+    #[account(
+        mut,
+        seeds = [b"vault",vault_state.key().as_ref()],
+        bump = vault_state.vault_bump
+    )]
+    pub vault: SystemAccount<'info>,
+
+    pub system_program : Program<'info, System>,
+}
+
+impl<'info> Withdraw<'info> {
+    pub fn withdraw(&mut self, amount:u64) -> Result<()> {
+        let vault_balance = self.vault.try_lamports()?;
+        let rent_exempt = Rent::get()?.minimum_balance(self.vault.to_account_info().data_len());
+        require!((vault_balance-rent_exempt) >= amount,VaultError::InsufficientFunds);
+        let cpi_program = self.system_program.to_account_info();
+        let cpi_account = Transfer{
+            from: self.vault.to_account_info(),
+            to:self.user.to_account_info()
+        };
+        
+        let signer_seeds: &[&[&[u8]]] = &[&["vault".as_bytes(),self.vault_state.to_account_info().key.as_ref(),&[self.vault_state.vault_bump]]];
+        let cpi_ctx = CpiContext::new_with_signer(cpi_program, cpi_account, signer_seeds);
+        
+        transfer(cpi_ctx, amount)?;
+        Ok(())
     }
 }
 
@@ -80,8 +172,7 @@ pub struct Initialize<'info> {
 impl <'info> Initialize<'info> {
     pub fn initialize(&mut self, bump:&InitializeBumps) -> Result<()> {
 
-        let rent_exempt = Rent::get()?.minimum_balance(self.vault_state.to_account_info().data_len());
-        msg!("{}",self.vault_state.to_account_info().data_len());
+        let rent_exempt = Rent::get()?.minimum_balance(self.vault.to_account_info().data_len());
         
         let cpi_program = self.system_program.to_account_info();
         let cpi_accounts = Transfer {
